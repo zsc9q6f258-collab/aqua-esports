@@ -187,6 +187,14 @@ ul { padding: 0; list-style: none; }
 .m-result { display: flex; align-items: center; gap: 10px; }
 .m-result b { font-family: var(--display); font-weight: 700; font-size: 22px; }
 .m-result em { font-style: normal; font-size: 12px; font-weight: 700; padding: 3px 8px; border: 1px solid var(--line-ghost); border-radius: 3px; }
+.m-result .r-w { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.m-result .r-pending { color: var(--muted); font-weight: 600; }
+.m-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
+}
+.m-live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.match-list li.empty { display: block; padding: 22px 0; color: var(--muted); }
 
 
 /* Community */

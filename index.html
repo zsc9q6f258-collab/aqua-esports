@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600&display=swap">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -49,19 +49,19 @@
           </div>
         </div>
 
-        <aside class="next-match" aria-labelledby="next-match-title">
+        <aside class="next-match" aria-labelledby="next-match-title" aria-live="polite">
           <div class="nm-head">
             <h2 class="label" id="next-match-title">Next match</h2>
-            <span class="nm-when">[DATE · TIME]</span>
+            <span class="nm-when" id="nm-when">Loading…</span>
           </div>
           <div class="nm-teams">
             <span class="team">Aqua</span>
             <span class="vs">VS</span>
-            <span class="team">[OPPONENT]</span>
+            <span class="team" id="nm-opponent">TBA</span>
           </div>
           <dl class="nm-meta">
-            <div><dt>Event</dt><dd>[EVENT NAME]</dd></div>
-            <div><dt>Format</dt><dd>[BO1 / BO3]</dd></div>
+            <div><dt>Event</dt><dd id="nm-event">—</dd></div>
+            <div><dt>Format</dt><dd id="nm-format">—</dd></div>
           </dl>
         </aside>
       </div>
@@ -149,23 +149,16 @@
       <div class="wrap">
         <p class="eyebrow">02 — Matches</p>
         <h2 class="heading heading-spaced">Schedule &amp; results</h2>
+        <!-- Matches come from data/matches.json — see README.md -->
 
         <div class="match-cols">
           <div>
             <h3 class="label">Upcoming</h3>
-            <ul class="match-list">
-              <li><span class="m-date">[DATE]</span><span class="m-main"><strong>vs [OPPONENT]</strong><small>[EVENT]</small></span><span class="m-time">[TIME]</span></li>
-              <li><span class="m-date">[DATE]</span><span class="m-main"><strong>vs [OPPONENT]</strong><small>[EVENT]</small></span><span class="m-time">[TIME]</span></li>
-              <li><span class="m-date">[DATE]</span><span class="m-main"><strong>vs [OPPONENT]</strong><small>[EVENT]</small></span><span class="m-time">[TIME]</span></li>
-            </ul>
+            <ul class="match-list" id="upcoming-list" aria-live="polite"></ul>
           </div>
           <div>
             <h3 class="label">Recent results</h3>
-            <ul class="match-list">
-              <li><span class="m-date">[DATE]</span><span class="m-main"><strong>vs [OPPONENT]</strong><small>[EVENT] · [MAP]</small></span><span class="m-result"><b>[0–0]</b><em>[W/L]</em></span></li>
-              <li><span class="m-date">[DATE]</span><span class="m-main"><strong>vs [OPPONENT]</strong><small>[EVENT] · [MAP]</small></span><span class="m-result"><b>[0–0]</b><em>[W/L]</em></span></li>
-              <li><span class="m-date">[DATE]</span><span class="m-main"><strong>vs [OPPONENT]</strong><small>[EVENT] · [MAP]</small></span><span class="m-result"><b>[0–0]</b><em>[W/L]</em></span></li>
-            </ul>
+            <ul class="match-list" id="results-list" aria-live="polite"></ul>
           </div>
         </div>
       </div>
@@ -237,6 +230,6 @@
     </div>
   </footer>
 
-  <script src="script.js?v=2"></script>
+  <script src="script.js?v=10"></script>
 </body>
 </html>
