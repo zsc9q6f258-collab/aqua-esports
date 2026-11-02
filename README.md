@@ -14,53 +14,31 @@ Then open http://localhost:8417.
 
 ## Editing
 
-- **Matches**: `data/matches.json` (see below)
+- **Matches**: Supabase, using the SQL files in `supabase/` (see below)
 - **Content** (roster, staff, substitutes, text): `index.html`
 - **Styles**: `styles.css`
 - **Player photos**: `assets/players/` — replace a file with the same name to update a photo
 
 ## Updating matches
 
-The schedule, results and the "Next match" card all come from `data/matches.json`.
-Edit that one file — on GitHub you can click it, then the pencil icon, then **Commit changes**.
-The live site picks it up within a few minutes, and open pages refresh it on their own.
+The "Next match" card, Upcoming list and Recent results all come from the
+**Aqua** project on Supabase. Open it, go to **SQL Editor**, paste in one of
+the files from `supabase/`, highlight one block, edit the values and click
+**Run** (Run only runs the highlighted text). Open pages update within seconds.
 
-Each match is one entry in the `matches` list:
+| File | What it does |
+|---|---|
+| `supabase/00_setup.sql` | One-time setup: creates the tables. Safe to run again. |
+| `supabase/01_match_card.sql` | **SQL 1**: set the Next match card to *No upcoming match*, *Upcoming match* or *Live match*. |
+| `supabase/02_recent_results.sql` | **SQL 2**: add, remove or fix a result. |
+| `supabase/03_upcoming_matches.sql` | **SQL 3**: add, cancel, un-cancel, reschedule or remove an upcoming match. |
 
-```json
-{
-  "matches": [
-    {
-      "date": "2026-11-08T19:00:00-05:00",
-      "opponent": "Team Name",
-      "event": "T3 League · Week 1",
-      "format": "BO1"
-    },
-    {
-      "date": "2026-11-01T19:00:00-05:00",
-      "opponent": "Other Team",
-      "event": "T3 League · Week 0",
-      "map": "Clubhouse",
-      "score": "7-4"
-    }
-  ]
-}
-```
-
-| Field | Required | Notes |
-|---|---|---|
-| `date` | yes | Start time with its time-zone offset (`-05:00` is US Eastern standard time). Visitors see it in their own time zone. |
-| `opponent` | yes | Shown as "vs Team Name". |
-| `event` | no | League, cup or "Scrim". |
-| `format` | no | `BO1`, `BO3`, etc. |
-| `map` | no | Shown on results. |
-| `score` | no | Aqua's score first, e.g. `7-4`. Adding a score moves the match to Recent results and marks it W or L automatically. |
-| `result` | no | Override the automatic `W` / `L` / `D`. |
+Tip: save each file as a snippet in the SQL Editor so it's one click away.
 
 How it behaves:
 
-- The earliest unfinished match becomes **Next match** at the top of the page.
-- From its start time until a score is added (or 3 hours pass) a match shows as **Live**.
-- A match with no score 3 hours after it starts moves to Recent results as **Pending**.
-- Recent results shows the newest 5. Older entries can stay in the file.
-- Separate entries with commas, and no comma after the last one. If the file has a typo, the page shows "Couldn't load matches" — paste it into https://jsonlint.com to find the problem.
+- Times are written with a time zone, e.g. `'2026-11-08 19:00 America/New_York'`. Visitors see them in their own time zone.
+- The Next match card is set by hand with SQL 1. It doesn't change on its own when a match starts.
+- Upcoming matches stay listed until 3 hours after their start time. Cancelled ones stay listed, marked "Cancelled", until then.
+- Recent results shows the newest 5. W / L / D comes from the scores (Aqua's first).
+- The website uses Supabase's publishable key, which is meant to be public. The tables only allow reading with it, so nobody can change data from the website; changes are made from the Supabase dashboard.

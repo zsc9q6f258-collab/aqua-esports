@@ -194,6 +194,8 @@ ul { padding: 0; list-style: none; }
   font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent);
 }
 .m-live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.m-cancelled { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.match-list li.is-cancelled strong { color: var(--muted); text-decoration: line-through; }
 .match-list li.empty { display: block; padding: 22px 0; color: var(--muted); }
 
 

@@ -16,18 +16,21 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && nav.clas
 document.getElementById("year").textContent = new Date().getFullYear();
 
 // ---------------------------------------------------------------------------
-// Match feed — reads data/matches.json and keeps the schedule current.
-// See README.md for the file format.
+// Match feed — reads the Supabase tables and updates as soon as they change.
+// Edit the data with the SQL files in supabase/ (see README.md).
 // ---------------------------------------------------------------------------
-const FEED_URL = "data/matches.json";
-const LIVE_WINDOW_MS = 3 * 60 * 60 * 1000;   // a match counts as live for 3h after start
-const REFETCH_MS = 5 * 60 * 1000;            // pull new data every 5 minutes
+const SUPABASE_URL = "https://jzhoabqjxklsmnhycwcb.supabase.co";
+const SUPABASE_KEY = "sb_publishable_eNLKMAli0vBA9xlovsL5iw_6nzIpvX9";   // public, read-only key
+const SHOW_AFTER_START_MS = 3 * 60 * 60 * 1000;   // upcoming matches stay listed 3h after start
+const REFETCH_MS = 5 * 60 * 1000;                 // fallback in case the live connection drops
 const MAX_RESULTS = 5;
+
+const db = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric" });
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 
-let matches = null;
+let feed = null;   // { card, upcoming, results }
 let feedError = false;
 
 function el(tag, className, text) {
@@ -37,113 +40,124 @@ function el(tag, className, text) {
   return node;
 }
 
-function resultFromScore(score) {
-  const [a, b] = String(score).split(/[-–:]/).map((n) => parseInt(n, 10));
-  if (Number.isNaN(a) || Number.isNaN(b)) return "";
-  return a > b ? "W" : a < b ? "L" : "D";
-}
-
-function normalize(raw) {
-  return (raw.matches || [])
-    .map((m) => ({ ...m, start: new Date(m.date) }))
-    .filter((m) => {
-      if (Number.isNaN(m.start.getTime())) { console.warn("Skipping match with a bad date:", m); return false; }
-      return true;
-    });
-}
-
 function emptyRow(text) {
-  const li = el("li", "empty");
-  li.textContent = text;
-  return li;
+  return el("li", "empty", text);
 }
 
-function upcomingRow(m, now) {
-  const li = el("li");
-  li.append(el("span", "m-date", dayFmt.format(m.start)));
+function when(date) {
+  return `${dayFmt.format(date)} · ${timeFmt.format(date)}`;
+}
+
+function upcomingRow(m) {
+  const start = new Date(m.starts_at);
+  const li = el("li", m.cancelled ? "is-cancelled" : null);
+  li.append(el("span", "m-date", dayFmt.format(start)));
   const main = el("span", "m-main");
-  main.append(el("strong", null, `vs ${m.opponent || "TBA"}`));
+  main.append(el("strong", null, `vs ${m.opponent}`));
   main.append(el("small", null, [m.event, m.format].filter(Boolean).join(" · ")));
   li.append(main);
-  li.append(now >= m.start
-    ? el("span", "m-live", "Live")
-    : el("span", "m-time", timeFmt.format(m.start)));
+  li.append(m.cancelled
+    ? el("span", "m-cancelled", "Cancelled")
+    : el("span", "m-time", timeFmt.format(start)));
   return li;
 }
 
-function resultRow(m) {
+function resultRow(r) {
   const li = el("li");
-  li.append(el("span", "m-date", dayFmt.format(m.start)));
+  li.append(el("span", "m-date", dayFmt.format(new Date(r.played_at))));
   const main = el("span", "m-main");
-  main.append(el("strong", null, `vs ${m.opponent || "TBA"}`));
-  main.append(el("small", null, [m.event, m.map].filter(Boolean).join(" · ")));
+  main.append(el("strong", null, `vs ${r.opponent}`));
+  main.append(el("small", null, [r.event, r.map].filter(Boolean).join(" · ")));
   li.append(main);
+  const a = r.aqua_score, b = r.opponent_score;
+  const result = a > b ? "W" : a < b ? "L" : "D";
   const right = el("span", "m-result");
-  if (m.score) {
-    const result = (m.result || resultFromScore(m.score)).toUpperCase();
-    right.append(el("b", null, String(m.score).replace("-", "–")));
-    if (result) right.append(el("em", `r-${result.toLowerCase()}`, result));
-  } else {
-    right.append(el("em", "r-pending", "Pending"));
-  }
+  right.append(el("b", null, `${a}–${b}`));
+  right.append(el("em", `r-${result.toLowerCase()}`, result));
   li.append(right);
   return li;
+}
+
+function renderCard(card) {
+  const set = (id, text) => { document.getElementById(id).textContent = text; };
+  const whenEl = document.getElementById("nm-when");
+  const state = card ? card.state : "none";
+  whenEl.classList.toggle("m-live", state === "live");
+
+  if (state === "live") {
+    set("nm-when", "Live now");
+  } else if (state === "upcoming") {
+    set("nm-when", card.starts_at ? when(new Date(card.starts_at)) : "TBA");
+  } else {
+    set("nm-when", "TBA");
+  }
+
+  if (state === "none") {
+    set("nm-opponent", "TBA");
+    set("nm-event", "No match scheduled");
+    set("nm-format", "—");
+  } else {
+    set("nm-opponent", card.opponent || "TBA");
+    set("nm-event", card.event || "—");
+    set("nm-format", card.format || "—");
+  }
 }
 
 function renderFeed() {
   const upList = document.getElementById("upcoming-list");
   const resList = document.getElementById("results-list");
-  const set = (id, text) => { document.getElementById(id).textContent = text; };
 
-  if (!matches) {
+  if (!feed) {
     const msg = feedError ? "Couldn't load matches. Try refreshing." : "Loading…";
     upList.replaceChildren(emptyRow(msg));
     resList.replaceChildren(emptyRow(msg));
-    set("nm-when", feedError ? "Unavailable" : "Loading…");
+    document.getElementById("nm-when").textContent = feedError ? "Unavailable" : "Loading…";
     return;
   }
 
-  const now = new Date();
-  const done = (m) => m.score != null && m.score !== "";
-  const upcoming = matches
-    .filter((m) => !done(m) && now - m.start < LIVE_WINDOW_MS)
-    .sort((a, b) => a.start - b.start);
-  const results = matches
-    .filter((m) => done(m) || now - m.start >= LIVE_WINDOW_MS)
-    .sort((a, b) => b.start - a.start)
-    .slice(0, MAX_RESULTS);
+  const now = Date.now();
+  const upcoming = feed.upcoming.filter((m) => now - new Date(m.starts_at) < SHOW_AFTER_START_MS);
 
-  upList.replaceChildren(...(upcoming.length ? upcoming.map((m) => upcomingRow(m, now)) : [emptyRow("No matches scheduled. Check back soon.")]));
-  resList.replaceChildren(...(results.length ? results.map(resultRow) : [emptyRow("No results yet.")]));
-
-  const next = upcoming[0];
-  if (next) {
-    set("nm-when", now >= next.start ? "Live now" : `${dayFmt.format(next.start)} · ${timeFmt.format(next.start)}`);
-    set("nm-opponent", next.opponent || "TBA");
-    set("nm-event", next.event || "—");
-    set("nm-format", next.format || "—");
-  } else {
-    set("nm-when", "TBA");
-    set("nm-opponent", "TBA");
-    set("nm-event", "No match scheduled");
-    set("nm-format", "—");
-  }
+  upList.replaceChildren(...(upcoming.length ? upcoming.map(upcomingRow) : [emptyRow("No matches scheduled. Check back soon.")]));
+  resList.replaceChildren(...(feed.results.length ? feed.results.map(resultRow) : [emptyRow("No results yet.")]));
+  renderCard(feed.card);
 }
 
 async function loadFeed() {
   try {
-    const res = await fetch(FEED_URL, { cache: "no-cache" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    matches = normalize(await res.json());
+    if (!db) throw new Error("Supabase library didn't load");
+    const [card, upcoming, results] = await Promise.all([
+      db.from("match_card").select("*").eq("id", 1).maybeSingle(),
+      db.from("upcoming_matches").select("*").order("starts_at"),
+      db.from("recent_results").select("*").order("played_at", { ascending: false }).limit(MAX_RESULTS),
+    ]);
+    const failed = [card, upcoming, results].find((r) => r.error);
+    if (failed) throw failed.error;
+    feed = { card: card.data, upcoming: upcoming.data, results: results.data };
     feedError = false;
   } catch (err) {
     console.error("Match feed failed to load:", err);
-    if (!matches) feedError = true;   // keep showing the last good data if we had some
+    if (!feed) feedError = true;   // keep showing the last good data if we had some
   }
   renderFeed();
 }
 
+// Refetch whenever any of the tables change
+let reloadTimer;
+function scheduleReload() {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(loadFeed, 300);
+}
+
+if (db) {
+  const channel = db.channel("match-feed");
+  for (const table of ["match_card", "upcoming_matches", "recent_results"]) {
+    channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleReload);
+  }
+  channel.subscribe();
+}
+
 loadFeed();
 setInterval(loadFeed, REFETCH_MS);
-setInterval(renderFeed, 60 * 1000);   // flips matches to Live / Results as time passes
+setInterval(renderFeed, 60 * 1000);   // drops matches off the Upcoming list as time passes
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadFeed(); });
