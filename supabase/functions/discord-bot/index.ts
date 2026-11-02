@@ -44,24 +44,35 @@ const TIMEZONES = [
   ["UTC", "UTC"],
 ].map(([name, value]) => ({ name, value }));
 
+// Pick lists, so staff choose instead of typing
+const choices = (values: (string | number)[]) => values.map((v) => ({ name: String(v), value: v }));
+const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+const FORMATS = ["BO1", "BO2", "BO3", "BO4", "BO5"];
+const EVENTS = ["T3 League", "Cup", "Scrim"];
+const MAPS = [
+  "Bank", "Border", "Chalet", "Clubhouse", "Coastline", "Consulate", "Emerald Plains", "Favela", "Fortress",
+  "Hereford Base", "House", "Kafe Dostoyevsky", "Kanal", "Lair", "Nighthaven Labs", "Oregon", "Outback",
+  "Presidential Plane", "Skyscraper", "Stadium", "Theme Park", "Tower", "Villa", "Yacht",
+];
+
 // Discord limits each description to 100 characters
 const opt = {
-  opponent: (required = true, description = "The other team's name, e.g. Team Liquid") =>
-    ({ type: STRING, name: "opponent", description, required, max_length: 60 }),
+  opponent: (required = true, description = "The other team: pick a past opponent, or type a new name") =>
+    ({ type: STRING, name: "opponent", description, required, max_length: 60, autocomplete: true }),
   date: (required = true, description = "Match date as YYYY-MM-DD, e.g. 2026-11-08") =>
     ({ type: STRING, name: "date", description, required }),
   time: (required = true, description = "Start time in 24-hour format, e.g. 19:00 for 7 PM") =>
     ({ type: STRING, name: "time", description, required }),
   timezone: { type: STRING, name: "timezone", description: "Time zone of the date and time you typed (Eastern if left empty)", choices: TIMEZONES },
-  event: { type: STRING, name: "event", description: "League or event name, e.g. T3 League · Week 1, or Scrim", max_length: 60 },
-  format: { type: STRING, name: "format", description: "Series length, e.g. BO1 or BO3", max_length: 10 },
-  map: { type: STRING, name: "map", description: "Map played, e.g. Clubhouse", max_length: 40 },
+  event: { type: STRING, name: "event", description: "Which competition", choices: choices(EVENTS) },
+  format: { type: STRING, name: "format", description: "Series length", choices: choices(FORMATS) },
+  map: { type: STRING, name: "map", description: "Map played: start typing, then pick it", max_length: 40, autocomplete: true },
   match: { type: STRING, name: "match", description: "Which match: start typing the opponent's name, then pick it from the list", required: true, autocomplete: true },
   result: { type: STRING, name: "result", description: "Which result: start typing the opponent's name, then pick it from the list", required: true, autocomplete: true },
-  aqua: { type: INTEGER, name: "aqua", description: "Round score: rounds Aqua won, e.g. 7", min_value: 0 },
-  opp: { type: INTEGER, name: "opp", description: "Round score: rounds the opponent won, e.g. 4", min_value: 0 },
-  aquaMaps: { type: INTEGER, name: "aqua_maps", description: "Series score: maps Aqua won, e.g. 2 in a 2–1 BO3", min_value: 0 },
-  oppMaps: { type: INTEGER, name: "opp_maps", description: "Series score: maps the opponent won, e.g. 1 in a 2–1 BO3", min_value: 0 },
+  aqua: { type: INTEGER, name: "aqua", description: "Round score: rounds Aqua won", choices: choices(range(0, 15)) },
+  opp: { type: INTEGER, name: "opp", description: "Round score: rounds the opponent won", choices: choices(range(0, 15)) },
+  aquaMaps: { type: INTEGER, name: "aqua_maps", description: "Series score: maps Aqua won (2 in a 2–1 BO3)", choices: choices(range(0, 3)) },
+  oppMaps: { type: INTEGER, name: "opp_maps", description: "Series score: maps the opponent won (1 in a 2–1 BO3)", choices: choices(range(0, 3)) },
 };
 
 const COMMANDS = [
@@ -398,14 +409,30 @@ async function autocomplete(name: string, focused: string | undefined, typed: st
     return `${day} · ${rest}`.slice(0, 100);
   };
   let rows: { name: string; value: string }[] = [];
-  if (focused === "match") {
+  const search = typed.trim().toLowerCase();
+  if (focused === "map") {
+    rows = MAPS.filter((m) => m.toLowerCase().includes(search)).map((m) => ({ name: m, value: m }));
+  } else if (focused === "opponent") {
+    // Past opponents from every table, plus whatever is being typed (for a new team)
+    const [up, res, card] = await Promise.all([
+      run(db.from("upcoming_matches").select("opponent").ilike("opponent", `%${typed}%`).limit(50)),
+      run(db.from("recent_results").select("opponent").ilike("opponent", `%${typed}%`).limit(50)),
+      run(db.from("match_card").select("opponent").ilike("opponent", `%${typed}%`)),
+    ]);
+    const names = new Map<string, string>();
+    if (typed.trim()) names.set(search, typed.trim().slice(0, 60));
+    for (const r of [...up, ...res, ...card] as any[]) {
+      if (r.opponent && !names.has(r.opponent.toLowerCase())) names.set(r.opponent.toLowerCase(), r.opponent);
+    }
+    rows = [...names.values()].map((n) => ({ name: n, value: n }));
+  } else if (focused === "match") {
     const data = await run(db.from("upcoming_matches").select().ilike("opponent", `%${typed}%`).order("starts_at").limit(25));
     rows = data.map((m: any) => ({ name: label(m.starts_at, `vs ${m.opponent}${m.cancelled ? " (cancelled)" : ""}`), value: String(m.id) }));
   } else if (focused === "result") {
     const data = await run(db.from("recent_results").select().ilike("opponent", `%${typed}%`).order("played_at", { ascending: false }).limit(25));
     rows = data.map((r: any) => ({ name: label(r.played_at, `vs ${r.opponent} · ${scoreText(r)}`), value: String(r.id) }));
   }
-  return json({ type: 8, data: { choices: rows } });
+  return json({ type: 8, data: { choices: rows.slice(0, 25) } });
 }
 
 // ---------------------------------------------------------------------------
