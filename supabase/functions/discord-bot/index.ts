@@ -44,52 +44,63 @@ const TIMEZONES = [
   ["UTC", "UTC"],
 ].map(([name, value]) => ({ name, value }));
 
+// Discord limits each description to 100 characters
 const opt = {
-  opponent: (required = true) => ({ type: STRING, name: "opponent", description: "Opponent team name", required, max_length: 60 }),
-  date: (required = true) => ({ type: STRING, name: "date", description: "Date, e.g. 2026-11-08", required }),
-  time: (required = true) => ({ type: STRING, name: "time", description: "24-hour time, e.g. 19:00", required }),
-  timezone: { type: STRING, name: "timezone", description: "Time zone of the date and time (default Eastern)", choices: TIMEZONES },
-  event: { type: STRING, name: "event", description: "League, cup or Scrim", max_length: 60 },
-  format: { type: STRING, name: "format", description: "BO1, BO3…", max_length: 10 },
-  map: { type: STRING, name: "map", description: "Map played", max_length: 40 },
-  match: { type: STRING, name: "match", description: "Start typing the opponent, then pick the match", required: true, autocomplete: true },
-  result: { type: STRING, name: "result", description: "Start typing the opponent, then pick the result", required: true, autocomplete: true },
-  aqua: { type: INTEGER, name: "aqua", description: "Aqua's score", required: true, min_value: 0 },
-  opp: { type: INTEGER, name: "opp", description: "Opponent's score", required: true, min_value: 0 },
+  opponent: (required = true, description = "The other team's name, e.g. Team Liquid") =>
+    ({ type: STRING, name: "opponent", description, required, max_length: 60 }),
+  date: (required = true, description = "Match date as YYYY-MM-DD, e.g. 2026-11-08") =>
+    ({ type: STRING, name: "date", description, required }),
+  time: (required = true, description = "Start time in 24-hour format, e.g. 19:00 for 7 PM") =>
+    ({ type: STRING, name: "time", description, required }),
+  timezone: { type: STRING, name: "timezone", description: "Time zone of the date and time you typed (Eastern if left empty)", choices: TIMEZONES },
+  event: { type: STRING, name: "event", description: "League or event name, e.g. T3 League · Week 1, or Scrim", max_length: 60 },
+  format: { type: STRING, name: "format", description: "Series length, e.g. BO1 or BO3", max_length: 10 },
+  map: { type: STRING, name: "map", description: "Map played, e.g. Clubhouse", max_length: 40 },
+  match: { type: STRING, name: "match", description: "Which match: start typing the opponent's name, then pick it from the list", required: true, autocomplete: true },
+  result: { type: STRING, name: "result", description: "Which result: start typing the opponent's name, then pick it from the list", required: true, autocomplete: true },
+  aqua: { type: INTEGER, name: "aqua", description: "Rounds Aqua won", required: true, min_value: 0 },
+  opp: { type: INTEGER, name: "opp", description: "Rounds the opponent won", required: true, min_value: 0 },
 };
 
 const COMMANDS = [
   {
-    name: "card", description: "Change the Next match card on the website",
+    name: "card", description: "Website: change the big Next match box at the top of the page",
     default_member_permissions: MANAGE_GUILD, contexts: [0],
     options: [
-      { type: SUB, name: "none", description: "No upcoming match" },
-      { type: SUB, name: "next", description: "Show the soonest match from the Upcoming list" },
-      { type: SUB, name: "upcoming", description: "Show an upcoming match", options: [opt.opponent(), opt.date(), opt.time(), opt.timezone, opt.event, opt.format] },
-      { type: SUB, name: "live", description: "Mark the match as live (optionally set a new opponent)", options: [opt.opponent(false), opt.event, opt.format] },
-      { type: SUB, name: "show", description: "See what the card shows right now" },
+      { type: SUB, name: "none", description: "Clear the box so it says “No match scheduled”" },
+      { type: SUB, name: "next", description: "Fill the box with the soonest match from the Upcoming list" },
+      { type: SUB, name: "upcoming", description: "Fill the box with a match you type in (doesn't add it to the Upcoming list)",
+        options: [opt.opponent(), opt.date(), opt.time(), opt.timezone, opt.event, opt.format] },
+      { type: SUB, name: "live", description: "Show “LIVE NOW” in the box for the match that's in it",
+        options: [opt.opponent(false, "Only if it's a different team: the new opponent's name"), opt.event, opt.format] },
+      { type: SUB, name: "show", description: "See what the box shows right now (changes nothing)" },
     ],
   },
   {
-    name: "match", description: "Manage upcoming matches on the website",
+    name: "match", description: "Website: manage the Upcoming matches list",
     default_member_permissions: MANAGE_GUILD, contexts: [0],
     options: [
-      { type: SUB, name: "add", description: "Add an upcoming match", options: [opt.opponent(), opt.date(), opt.time(), opt.timezone, opt.event, opt.format] },
-      { type: SUB, name: "list", description: "List upcoming matches" },
-      { type: SUB, name: "cancel", description: "Mark a match as cancelled (stays listed)", options: [opt.match] },
-      { type: SUB, name: "uncancel", description: "Undo a cancel", options: [opt.match] },
-      { type: SUB, name: "reschedule", description: "Change a match's date and time", options: [opt.match, opt.date(), opt.time(), opt.timezone] },
-      { type: SUB, name: "remove", description: "Remove a match from the website", options: [opt.match] },
+      { type: SUB, name: "add", description: "Add a match to the Upcoming list",
+        options: [opt.opponent(), opt.date(), opt.time(), opt.timezone, opt.event, opt.format] },
+      { type: SUB, name: "list", description: "See every match on the Upcoming list (changes nothing)" },
+      { type: SUB, name: "cancel", description: "Mark a match as Cancelled. It stays on the list, crossed out", options: [opt.match] },
+      { type: SUB, name: "uncancel", description: "Undo a cancel. The match shows as on again", options: [opt.match] },
+      { type: SUB, name: "reschedule", description: "Move a match to a new date and time",
+        options: [opt.match, opt.date(true, "New date as YYYY-MM-DD"), opt.time(true, "New start time, 24-hour, e.g. 19:00"), opt.timezone] },
+      { type: SUB, name: "remove", description: "Delete a match from the Upcoming list completely", options: [opt.match] },
     ],
   },
   {
-    name: "result", description: "Manage recent results on the website",
+    name: "result", description: "Website: manage the Recent results list",
     default_member_permissions: MANAGE_GUILD, contexts: [0],
     options: [
-      { type: SUB, name: "add", description: "Add a result", options: [opt.opponent(), opt.aqua, opt.opp, opt.map, opt.event, opt.date(false), opt.time(false), opt.timezone] },
-      { type: SUB, name: "list", description: "List recent results" },
-      { type: SUB, name: "edit", description: "Fix a score", options: [opt.result, opt.aqua, opt.opp] },
-      { type: SUB, name: "remove", description: "Remove a result", options: [opt.result] },
+      { type: SUB, name: "add", description: "Add a finished match and its score. W or L is worked out for you",
+        options: [opt.opponent(), opt.aqua, opt.opp, opt.map, opt.event,
+          opt.date(false, "Date played as YYYY-MM-DD (leave empty for today)"),
+          opt.time(false, "Start time, 24-hour (leave empty if you're not sure)"), opt.timezone] },
+      { type: SUB, name: "list", description: "See the latest results (changes nothing)" },
+      { type: SUB, name: "edit", description: "Fix the score of a result that's already on the website", options: [opt.result, opt.aqua, opt.opp] },
+      { type: SUB, name: "remove", description: "Delete a result from the website", options: [opt.result] },
     ],
   },
 ];
