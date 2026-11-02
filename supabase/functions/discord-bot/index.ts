@@ -32,7 +32,7 @@ const db = createClient(Deno.env.get("SUPABASE_URL")!, serverKey() as string, {
 // ---------------------------------------------------------------------------
 // Command definitions
 // ---------------------------------------------------------------------------
-const STRING = 3, INTEGER = 4, SUB = 1;
+const STRING = 3, INTEGER = 4, SUB = 1, GROUP = 2;
 
 const TIMEZONES = [
   ["Eastern (ET)", "America/New_York"],
@@ -58,8 +58,10 @@ const opt = {
   map: { type: STRING, name: "map", description: "Map played, e.g. Clubhouse", max_length: 40 },
   match: { type: STRING, name: "match", description: "Which match: start typing the opponent's name, then pick it from the list", required: true, autocomplete: true },
   result: { type: STRING, name: "result", description: "Which result: start typing the opponent's name, then pick it from the list", required: true, autocomplete: true },
-  aqua: { type: INTEGER, name: "aqua", description: "Rounds Aqua won", required: true, min_value: 0 },
-  opp: { type: INTEGER, name: "opp", description: "Rounds the opponent won", required: true, min_value: 0 },
+  aqua: { type: INTEGER, name: "aqua", description: "Round score: rounds Aqua won, e.g. 7", min_value: 0 },
+  opp: { type: INTEGER, name: "opp", description: "Round score: rounds the opponent won, e.g. 4", min_value: 0 },
+  aquaMaps: { type: INTEGER, name: "aqua_maps", description: "Series score: maps Aqua won, e.g. 2 in a 2–1 BO3", min_value: 0 },
+  oppMaps: { type: INTEGER, name: "opp_maps", description: "Series score: maps the opponent won, e.g. 1 in a 2–1 BO3", min_value: 0 },
 };
 
 const COMMANDS = [
@@ -95,13 +97,27 @@ const COMMANDS = [
     default_member_permissions: MANAGE_GUILD, contexts: [0],
     options: [
       { type: SUB, name: "add", description: "Add a finished match and its score. W or L is worked out for you",
-        options: [opt.opponent(), opt.aqua, opt.opp, opt.map, opt.event,
+        options: [opt.opponent(), opt.aqua, opt.opp, opt.aquaMaps, opt.oppMaps, opt.format, opt.map, opt.event,
           opt.date(false, "Date played as YYYY-MM-DD (leave empty for today)"),
           opt.time(false, "Start time, 24-hour (leave empty if you're not sure)"), opt.timezone] },
       { type: SUB, name: "list", description: "See the latest results (changes nothing)" },
-      { type: SUB, name: "edit", description: "Fix the score of a result that's already on the website", options: [opt.result, opt.aqua, opt.opp] },
+      { type: SUB, name: "edit", description: "Fix the score of a result that's already on the website",
+        options: [opt.result, opt.aqua, opt.opp, opt.aquaMaps, opt.oppMaps] },
       { type: SUB, name: "remove", description: "Delete a result from the website", options: [opt.result] },
     ],
+  },
+  {
+    name: "move", description: "Website: move a match between the Upcoming and Recent results lists",
+    default_member_permissions: MANAGE_GUILD, contexts: [0],
+    options: [{
+      type: GROUP, name: "match", description: "Move a match between the Upcoming and Recent results lists",
+      options: [
+        { type: SUB, name: "results", description: "Upcoming → Recent results: the match is over, add its score",
+          options: [opt.match, opt.aqua, opt.opp, opt.aquaMaps, opt.oppMaps, opt.map] },
+        { type: SUB, name: "upcoming", description: "Recent results → Upcoming: put a result back on the schedule (its score is removed)",
+          options: [opt.result, opt.date(true, "New date as YYYY-MM-DD"), opt.time(true, "New start time, 24-hour, e.g. 19:00"), opt.timezone] },
+      ],
+    }],
   },
 ];
 
@@ -129,7 +145,8 @@ const json = (data: unknown, status = 200) =>
 const reply = (content: string) => json({ type: 4, data: { content, flags: 64 } });
 
 function options(data: any): { sub: string; o: Record<string, any>; focused?: string } {
-  const sub = data.options?.[0];
+  let sub = data.options?.[0];
+  if (sub?.type === GROUP) sub = sub.options?.[0];   // e.g. /move match results
   const o: Record<string, any> = {};
   let focused;
   for (const x of sub?.options ?? []) {
@@ -179,6 +196,38 @@ const extra = (...parts: (string | null | undefined)[]) => {
   return s ? ` · ${s}` : "";
 };
 const outcome = (a: number, b: number) => (a > b ? "W" : a < b ? "L" : "D");
+
+// A result has a round score, a series (maps) score, or both.
+// W / L comes from the series score when there is one.
+const hasMaps = (r: any) => r.aqua_maps != null && r.opponent_maps != null;
+const hasRounds = (r: any) => r.aqua_score != null && r.opponent_score != null;
+
+function scoreText(r: any) {
+  const parts = [];
+  if (hasMaps(r)) parts.push(`${r.aqua_maps}–${r.opponent_maps} ${r.format ?? "maps"}`);
+  if (hasRounds(r)) parts.push(hasMaps(r) ? `rounds ${r.aqua_score}–${r.opponent_score}` : `${r.aqua_score}–${r.opponent_score}`);
+  const result = hasMaps(r) ? outcome(r.aqua_maps, r.opponent_maps) : outcome(r.aqua_score, r.opponent_score);
+  return `${result} ${parts.join(", ")}`;
+}
+
+function pair(a: number | undefined, b: number | undefined, names: string) {
+  if (a == null && b == null) return null;
+  if (a == null || b == null) throw new UserError(`Fill in both ${names}.`);
+  return [a, b];
+}
+
+// Reads the score options; at least one complete score is needed
+function scores(o: Record<string, any>, partial = false) {
+  const rounds = pair(o.aqua, o.opp, "aqua and opp");
+  const maps = pair(o.aqua_maps, o.opp_maps, "aqua_maps and opp_maps");
+  if (!rounds && !maps) {
+    throw new UserError("Add a score: aqua and opp for the round score, and/or aqua_maps and opp_maps for the series score (e.g. 2–1 in a BO3).");
+  }
+  const fields: Record<string, number | null> = {};
+  if (rounds || !partial) Object.assign(fields, { aqua_score: rounds?.[0] ?? null, opponent_score: rounds?.[1] ?? null });
+  if (maps || !partial) Object.assign(fields, { aqua_maps: maps?.[0] ?? null, opponent_maps: maps?.[1] ?? null });
+  return fields;
+}
 
 async function run<T>(q: PromiseLike<{ data: T; error: any }>): Promise<T> {
   const { data, error } = await q;
@@ -283,22 +332,61 @@ async function result(sub: string, o: Record<string, any>) {
     case "add": {
       const played = o.date ? when(o.date, o.time ?? "12:00", o.timezone) : new Date().toISOString();
       const r = await one(db.from("recent_results").insert({
-        opponent: o.opponent, aqua_score: o.aqua, opponent_score: o.opp, map: o.map ?? null, event: o.event ?? null, played_at: played,
+        opponent: o.opponent, ...scores(o), format: o.format ?? null, map: o.map ?? null, event: o.event ?? null, played_at: played,
       }).select(), "Couldn't add the result.");
-      return `Added ${outcome(r.aqua_score, r.opponent_score)} ${r.aqua_score}–${r.opponent_score} ${vs(r)}${extra(r.map, r.event)}`;
+      return `Added ${vs(r)}: ${scoreText(r)}${extra(r.map, r.event)}`;
     }
     case "list": {
       const rows = await run(db.from("recent_results").select().order("played_at", { ascending: false }).limit(15));
       if (!rows.length) return "No results yet.";
-      return rows.map((r: any) => `${stamp(r.played_at)} ${vs(r)} ${r.aqua_score}–${r.opponent_score} ${outcome(r.aqua_score, r.opponent_score)}${extra(r.map)}`).join("\n");
+      return rows.map((r: any) => `${stamp(r.played_at)} ${vs(r)}: ${scoreText(r)}${extra(r.map)}`).join("\n");
     }
     case "edit": {
-      const r = await one(db.from("recent_results").update({ aqua_score: o.aqua, opponent_score: o.opp }).eq("id", pickedId(o.result, "result")).select(), "Couldn't find that result.");
-      return `Updated ${vs(r)} to ${r.aqua_score}–${r.opponent_score} (${outcome(r.aqua_score, r.opponent_score)}).`;
+      const r = await one(db.from("recent_results").update(scores(o, true)).eq("id", pickedId(o.result, "result")).select(), "Couldn't find that result.");
+      return `Updated ${vs(r)}: ${scoreText(r)}.`;
     }
     case "remove": {
       const r = await one(db.from("recent_results").delete().eq("id", pickedId(o.result, "result")).select(), "Couldn't find that result.");
-      return `Removed ${vs(r)} ${r.aqua_score}–${r.opponent_score}.`;
+      return `Removed ${vs(r)}: ${scoreText(r)}.`;
+    }
+  }
+}
+
+// If the Next match box shows the match that just finished, move it on
+async function advanceCard(finished: any) {
+  const c = await run(db.from("match_card").select().eq("id", 1).single());
+  if (c.state === "none" || (c.opponent ?? "").toLowerCase() !== finished.opponent.toLowerCase()) return "";
+  const next = await run(
+    db.from("upcoming_matches").select().eq("cancelled", false).gt("starts_at", new Date().toISOString()).order("starts_at").limit(1),
+  );
+  const fields = next.length
+    ? { state: "upcoming", opponent: next[0].opponent, event: next[0].event, format: next[0].format, starts_at: next[0].starts_at }
+    : { state: "none", opponent: null, event: null, format: null, starts_at: null };
+  await run(db.from("match_card").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", 1));
+  return next.length
+    ? `\nThe Next match box now shows ${vs(next[0])} · ${stamp(next[0].starts_at)}.`
+    : "\nThe Next match box now says “No match scheduled”.";
+}
+
+async function move(sub: string, o: Record<string, any>) {
+  switch (sub) {
+    case "results": {
+      const m = await one(db.from("upcoming_matches").select().eq("id", pickedId(o.match, "match")), "Couldn't find that match.");
+      const s = scores(o);
+      const played = new Date(m.starts_at).getTime() <= Date.now() ? m.starts_at : new Date().toISOString();
+      const r = await one(db.from("recent_results").insert({
+        opponent: m.opponent, event: m.event, format: m.format, map: o.map ?? null, played_at: played, ...s,
+      }).select(), "Couldn't add the result.");
+      await run(db.from("upcoming_matches").delete().eq("id", m.id));
+      return `Moved ${vs(r)} to Recent results: ${scoreText(r)}${extra(r.map, r.event)}${await advanceCard(m)}`;
+    }
+    case "upcoming": {
+      const r = await one(db.from("recent_results").select().eq("id", pickedId(o.result, "result")), "Couldn't find that result.");
+      const m = await one(db.from("upcoming_matches").insert({
+        opponent: r.opponent, event: r.event, format: r.format, starts_at: when(o.date, o.time, o.timezone, true),
+      }).select(), "Couldn't add the match.");
+      await run(db.from("recent_results").delete().eq("id", r.id));
+      return `Moved ${vs(m)} back to Upcoming · ${stamp(m.starts_at)}${extra(m.event, m.format)}. Its score was removed.`;
     }
   }
 }
@@ -315,7 +403,7 @@ async function autocomplete(name: string, focused: string | undefined, typed: st
     rows = data.map((m: any) => ({ name: label(m.starts_at, `vs ${m.opponent}${m.cancelled ? " (cancelled)" : ""}`), value: String(m.id) }));
   } else if (focused === "result") {
     const data = await run(db.from("recent_results").select().ilike("opponent", `%${typed}%`).order("played_at", { ascending: false }).limit(25));
-    rows = data.map((r: any) => ({ name: label(r.played_at, `vs ${r.opponent} ${r.aqua_score}–${r.opponent_score}`), value: String(r.id) }));
+    rows = data.map((r: any) => ({ name: label(r.played_at, `vs ${r.opponent} · ${scoreText(r)}`), value: String(r.id) }));
   }
   return json({ type: 8, data: { choices: rows } });
 }
@@ -352,7 +440,7 @@ Deno.serve(async (req) => {
   try {
     if (i.type === 4) return await autocomplete(i.data.name, focused, String(o[focused ?? ""] ?? ""));
     if (i.type !== 2) return reply("Unsupported interaction.");
-    const handler = { card, match, result }[i.data.name as "card" | "match" | "result"];
+    const handler = { card, match, result, move }[i.data.name as "card" | "match" | "result" | "move"];
     if (!handler) return reply("Unknown command.");
     return reply((await handler(sub, o)) ?? "Done.");
   } catch (err) {

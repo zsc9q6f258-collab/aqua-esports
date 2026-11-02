@@ -33,6 +33,7 @@ the files from `supabase/`, highlight one block, edit the values and click
 | `supabase/02_recent_results.sql` | **SQL 2**: add, remove or fix a result. |
 | `supabase/03_upcoming_matches.sql` | **SQL 3**: add, cancel, un-cancel, reschedule or remove an upcoming match. |
 | `supabase/04_auto_live.sql` | One-time setup: switches the card from Upcoming to Live by itself at the start time. |
+| `supabase/05_series_scores.sql` | One-time setup: lets results store a BO3/BO5 series score (e.g. 2–1). |
 
 Tip: save each file as a snippet in the SQL Editor so it's one click away.
 
@@ -55,7 +56,8 @@ It runs as the `discord-bot` Supabase Edge Function
 |---|---|
 | `/card none` · `/card next` · `/card upcoming` · `/card live` · `/card show` | Next match card |
 | `/match add` · `list` · `cancel` · `uncancel` · `reschedule` · `remove` | Upcoming matches |
-| `/result add` · `list` · `edit` · `remove` | Recent results |
+| `/result add` · `list` · `edit` · `remove` | Recent results (round score and/or series score) |
+| `/move match results` · `/move match upcoming` | Move a match between the two lists; moving to results asks for the score |
 
 - Only members with **Manage Server** see the commands. To let another role use them:
   Server Settings → Integrations → Aqua Web manager.

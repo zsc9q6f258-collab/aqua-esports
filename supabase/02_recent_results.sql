@@ -11,6 +11,12 @@ insert into public.recent_results (played_at, opponent, event, map, aqua_score, 
 values ('2026-11-01 19:00 America/New_York', 'Team Name', 'T3 League · Week 0', 'Clubhouse', 7, 4);
 
 
+-- ----- Add a BO3 / BO5 result (series score, e.g. 2–1) -----------------------
+-- Needs 05_series_scores.sql. The round score columns can be left out.
+insert into public.recent_results (played_at, opponent, event, format, aqua_maps, opponent_maps)
+values ('2026-11-01 19:00 America/New_York', 'Team Name', 'T3 League · Week 0', 'BO3', 2, 1);
+
+
 -- ----- See all results (use the id to remove or fix one) ---------------------
 select id, played_at, opponent, event, map, aqua_score, opponent_score
 from public.recent_results

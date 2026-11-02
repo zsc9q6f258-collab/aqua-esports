@@ -67,9 +67,13 @@ function resultRow(r) {
   li.append(el("span", "m-date", dayFmt.format(new Date(r.played_at))));
   const main = el("span", "m-main");
   main.append(el("strong", null, `vs ${r.opponent}`));
-  main.append(el("small", null, [r.event, r.map].filter(Boolean).join(" · ")));
+  // Series (maps) score leads when there is one; the round score is shown under it
+  const maps = r.aqua_maps != null && r.opponent_maps != null;
+  const rounds = r.aqua_score != null && r.opponent_score != null;
+  const detail = [r.event, r.map, maps && r.format, maps && rounds && `Rounds ${r.aqua_score}–${r.opponent_score}`];
+  main.append(el("small", null, detail.filter(Boolean).join(" · ")));
   li.append(main);
-  const a = r.aqua_score, b = r.opponent_score;
+  const [a, b] = maps ? [r.aqua_maps, r.opponent_maps] : [r.aqua_score, r.opponent_score];
   const result = a > b ? "W" : a < b ? "L" : "D";
   const right = el("span", "m-result");
   right.append(el("b", null, `${a}–${b}`));
