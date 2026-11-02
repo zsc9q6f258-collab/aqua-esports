@@ -139,11 +139,36 @@ function options(data: any): { sub: string; o: Record<string, any>; focused?: st
   return { sub: sub?.name, o, focused };
 }
 
-// Postgres turns "2026-11-08 19:00 America/New_York" into the right instant
-function when(date: string, time: string, tz = DEFAULT_TZ) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new UserError("Date must look like 2026-11-08.");
-  if (!/^\d{1,2}:\d{2}$/.test(time)) throw new UserError("Time must be 24-hour, like 19:00.");
-  return `${date} ${time} ${tz}`;
+// Turns a date and time in the given time zone into an exact moment.
+// With `future`, times that have already passed are refused: the website
+// hides upcoming matches 3 hours after they start.
+function when(date: string, time: string, tz = DEFAULT_TZ, future = false) {
+  const d = date.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!d) throw new UserError("Date must look like 2026-11-08.");
+  const t = time.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!t) throw new UserError("Time must be 24-hour, like 19:00 for 7 PM.");
+  const [y, mo, day, h, mi] = [+d[1], +d[2], +d[3], +t[1], +t[2]];
+
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric",
+  });
+  const local = (ms: number) => Object.fromEntries(fmt.formatToParts(new Date(ms)).map((x) => [x.type, Number(x.value)]));
+  const wanted = Date.UTC(y, mo - 1, day, h, mi);
+  let ms = wanted;
+  for (let i = 0; i < 2; i++) {
+    const p = local(ms);
+    ms += wanted - Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+  }
+
+  const p = local(ms);
+  if (p.year !== y || p.month !== mo || p.day !== day || p.hour !== h || p.minute !== mi) {
+    throw new UserError("That date or time doesn't exist. Check the day, and use 24-hour time (7 PM is 19:00).");
+  }
+  const iso = new Date(ms).toISOString();
+  if (future && ms < Date.now()) {
+    throw new UserError(`That time has already passed (${stamp(iso)} your time), so it wouldn't show on the website. Check the date and time zone, and use 24-hour time (7 PM is 19:00).`);
+  }
+  return iso;
 }
 
 // Discord shows <t:…> in each reader's own time zone
@@ -199,7 +224,7 @@ async function card(sub: string, o: Record<string, any>) {
     case "upcoming": {
       const c = await update({
         state: "upcoming", opponent: o.opponent, event: o.event ?? null, format: o.format ?? null,
-        starts_at: when(o.date, o.time, o.timezone),
+        starts_at: when(o.date, o.time, o.timezone, true),
       });
       return `Card set to **Upcoming**: ${vs(c)} · ${stamp(c.starts_at)}${extra(c.event, c.format)}`;
     }
@@ -229,7 +254,7 @@ async function match(sub: string, o: Record<string, any>) {
   switch (sub) {
     case "add": {
       const m = await one(db.from("upcoming_matches").insert({
-        opponent: o.opponent, starts_at: when(o.date, o.time, o.timezone), event: o.event ?? null, format: o.format ?? null,
+        opponent: o.opponent, starts_at: when(o.date, o.time, o.timezone, true), event: o.event ?? null, format: o.format ?? null,
       }).select(), "Couldn't add the match.");
       return `Added ${vs(m)} · ${stamp(m.starts_at)}${extra(m.event, m.format)}`;
     }
@@ -243,7 +268,7 @@ async function match(sub: string, o: Record<string, any>) {
     case "uncancel":
       return `${vs(await change({ cancelled: false }))} is back on.`;
     case "reschedule": {
-      const m = await change({ starts_at: when(o.date, o.time, o.timezone) });
+      const m = await change({ starts_at: when(o.date, o.time, o.timezone, true) });
       return `Moved ${vs(m)} to ${stamp(m.starts_at)}.`;
     }
     case "remove": {
