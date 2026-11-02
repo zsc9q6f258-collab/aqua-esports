@@ -32,13 +32,15 @@ the files from `supabase/`, highlight one block, edit the values and click
 | `supabase/01_match_card.sql` | **SQL 1**: set the Next match card to *No upcoming match*, *Upcoming match* or *Live match*. |
 | `supabase/02_recent_results.sql` | **SQL 2**: add, remove or fix a result. |
 | `supabase/03_upcoming_matches.sql` | **SQL 3**: add, cancel, un-cancel, reschedule or remove an upcoming match. |
+| `supabase/04_auto_live.sql` | One-time setup: switches the card from Upcoming to Live by itself at the start time. |
 
 Tip: save each file as a snippet in the SQL Editor so it's one click away.
 
 How it behaves:
 
 - Times are written with a time zone, e.g. `'2026-11-08 19:00 America/New_York'`. Visitors see them in their own time zone.
-- The Next match card is set by hand with SQL 1. It doesn't change on its own when a match starts.
+- When an Upcoming card's start time arrives, it switches to **Live** by itself (checked every minute). Clearing it afterwards, or moving to the next match, is still done by hand (`/card next` or `/card none`).
+- Upcoming list entries show **Live** from their start time until they drop off 3 hours later.
 - Upcoming matches stay listed until 3 hours after their start time. Cancelled ones stay listed, marked "Cancelled", until then.
 - Recent results shows the newest 5. W / L / D comes from the scores (Aqua's first).
 - The website uses Supabase's publishable key, which is meant to be public. The tables only allow reading with it, so nobody can change data from the website; changes are made from the Supabase dashboard.

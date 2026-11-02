@@ -48,7 +48,7 @@ function when(date) {
   return `${dayFmt.format(date)} · ${timeFmt.format(date)}`;
 }
 
-function upcomingRow(m) {
+function upcomingRow(m, now) {
   const start = new Date(m.starts_at);
   const li = el("li", m.cancelled ? "is-cancelled" : null);
   li.append(el("span", "m-date", dayFmt.format(start)));
@@ -56,8 +56,8 @@ function upcomingRow(m) {
   main.append(el("strong", null, `vs ${m.opponent}`));
   main.append(el("small", null, [m.event, m.format].filter(Boolean).join(" · ")));
   li.append(main);
-  li.append(m.cancelled
-    ? el("span", "m-cancelled", "Cancelled")
+  li.append(m.cancelled ? el("span", "m-cancelled", "Cancelled")
+    : now >= start ? el("span", "m-live", "Live")
     : el("span", "m-time", timeFmt.format(start)));
   return li;
 }
@@ -118,7 +118,7 @@ function renderFeed() {
   const now = Date.now();
   const upcoming = feed.upcoming.filter((m) => now - new Date(m.starts_at) < SHOW_AFTER_START_MS);
 
-  upList.replaceChildren(...(upcoming.length ? upcoming.map(upcomingRow) : [emptyRow("No matches scheduled. Check back soon.")]));
+  upList.replaceChildren(...(upcoming.length ? upcoming.map((m) => upcomingRow(m, now)) : [emptyRow("No matches scheduled. Check back soon.")]));
   resList.replaceChildren(...(feed.results.length ? feed.results.map(resultRow) : [emptyRow("No results yet.")]));
   renderCard(feed.card);
 }

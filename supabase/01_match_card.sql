@@ -6,6 +6,9 @@
 --
 -- Times: write them with a time zone, e.g. '2026-11-08 19:00 America/New_York'.
 -- Visitors see the time converted to their own time zone.
+--
+-- An Upcoming card switches to Live by itself at its start time
+-- (see 04_auto_live.sql), so block C is only needed to go live early.
 -- =============================================================================
 
 
