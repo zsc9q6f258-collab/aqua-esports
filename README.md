@@ -42,3 +42,22 @@ How it behaves:
 - Upcoming matches stay listed until 3 hours after their start time. Cancelled ones stay listed, marked "Cancelled", until then.
 - Recent results shows the newest 5. W / L / D comes from the scores (Aqua's first).
 - The website uses Supabase's publishable key, which is meant to be public. The tables only allow reading with it, so nobody can change data from the website; changes are made from the Supabase dashboard.
+
+## Discord bot
+
+The **Aqua Web manager** Discord app updates the same tables with slash commands.
+It runs as the `discord-bot` Supabase Edge Function
+(`supabase/functions/discord-bot/index.ts`), so there is no server to keep running.
+
+| Command | What it does |
+|---|---|
+| `/card none` · `/card next` · `/card upcoming` · `/card live` · `/card show` | Next match card |
+| `/match add` · `list` · `cancel` · `uncancel` · `reschedule` · `remove` | Upcoming matches |
+| `/result add` · `list` · `edit` · `remove` | Recent results |
+
+- Only members with **Manage Server** see the commands. To let another role use them:
+  Server Settings → Integrations → Aqua Web manager.
+- Replies are only visible to whoever ran the command.
+- Commands from any server other than Aqua Esports are refused.
+- After changing the commands in the code, redeploy the function and open
+  `https://jzhoabqjxklsmnhycwcb.supabase.co/functions/v1/discord-bot/register` once.
