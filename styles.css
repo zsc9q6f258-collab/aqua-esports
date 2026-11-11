@@ -151,6 +151,7 @@ ul { padding: 0; list-style: none; }
 .player-body { padding: 18px 18px 20px; border-top: 2px solid var(--accent); }
 .player h3 { margin: 6px 0 2px; font-family: var(--display); font-weight: 700; font-size: 28px; line-height: 1.05; overflow-wrap: break-word; }
 .handle { font-size: 15px; color: var(--muted); }
+.is-tbd h3 { color: #6F7A84; }   /* open roster spot */
 
 .staff { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); border: 1px solid var(--line); border-radius: var(--radius); }
 .staff > div { padding: 20px 22px; }
